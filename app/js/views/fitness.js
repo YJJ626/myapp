@@ -37,6 +37,62 @@
       '</svg>';
   }
 
+  function monthSummary(cells) {
+    var days = 0, sets = 0, volume = 0;
+    var counter = {};
+    cells.forEach(function (c) {
+      if (!c.inMonth || !c.hasSession) return;
+      days++;
+      sets += c.setCount;
+      volume += c.volume;
+      if (c.part) counter[c.part] = (counter[c.part] || 0) + 1;
+    });
+    var parts = Object.keys(counter).sort(function (a, b) { return counter[b] - counter[a]; });
+    return { days: days, sets: sets, volume: volume, parts: parts };
+  }
+
+  function calendarHtml(monthKey, cells) {
+    var html = '<div class="cal" style="margin-top:16px">';
+    html += '<div class="cal-head"><div class="row">' +
+      '<button class="icon-btn" data-act="fit-month" data-delta="-1" title="上个月">' + App.ui.icon('left', 16) + '</button>' +
+      '<span class="cal-title">' + U.escape(U.monthTitle(monthKey)) + '</span>' +
+      '<button class="icon-btn" data-act="fit-month" data-delta="1" title="下个月">' + App.ui.icon('right', 16) + '</button>' +
+      '<button class="btn btn-sm" data-act="fit-month" data-delta="0">回到本月</button>' +
+      '</div><div class="cal-legend">' +
+      '<span><i style="background:var(--accent)"></i>练过</span>' +
+      '<span><i style="background:var(--surface-3)"></i>计划中</span>' +
+      '<span><i style="background:var(--surface-2)"></i>休息日</span>' +
+      '</div></div>';
+    html += '<div class="cal-week">' + U.weekdayShort.map(function (d) { return '<span>周' + d + '</span>'; }).join('') + '</div>';
+    html += '<div class="cal-grid">';
+    cells.forEach(function (c) {
+      var cls = 'cal-cell';
+      if (!c.inMonth) cls += ' dim';
+      if (c.isToday) cls += ' today';
+      if (c.rest) cls += ' rest';
+      html += '<div class="' + cls + '" data-act="fit-day" data-date="' + c.date + '">';
+      html += '<div class="row-between"><span class="cal-num">' + U.parseKey(c.date).getDate() + '</span>' +
+        (c.hasSession ? '<span class="tiny faint">' + c.setCount + ' 组</span>' : '') + '</div>';
+      if (c.rest) {
+        html += '<span class="cal-tag">休息</span>';
+      } else if (c.part) {
+        html += '<span class="cal-tag ' + (c.hasSession ? 'part' : '') + '">' + U.escape(c.part) + '</span>';
+      }
+      if (c.names.length) {
+        html += '<div class="cal-ex">' + U.escape(c.names.slice(0, 2).join(' · ')) +
+          (c.names.length > 2 ? ' 等 ' + c.names.length + ' 个' : '') + '</div>';
+      }
+      if (c.part || c.names.length) {
+        html += '<div class="cal-meta">' + (c.hasSession
+          ? (c.doneSets ? '完成 ' + c.doneSets + '/' + c.setCount + ' 组' : c.setCount + ' 组')
+          : '计划 ' + c.setCount + ' 组') + (c.volume ? ' · ' + c.volume + 'kg' : '') + '</div>';
+      }
+      html += '</div>';
+    });
+    html += '</div></div>';
+    return html;
+  }
+
   views.fitness = {
     title: '健身计划',
     render: function (snap, ctx) {
@@ -44,6 +100,11 @@
       var weekDone = F.weekDone(ctx.weekStartKey);
       var todayTpl = (snap.templates || []).filter(function (t) { return t.weekday === U.weekday(ctx.today); })[0];
       var session = (snap.sessions || []).filter(function (s) { return s.date === ctx.today; })[0];
+
+      App.uiState = App.uiState || {};
+      var monthKey = App.uiState.fitMonth || U.monthKey(ctx.today);
+      var cells = F.monthData(monthKey, ctx.today);
+      var monthStats = monthSummary(cells);
 
       var html = '<div class="page-head"><div class="grow"><h1>健身计划</h1>' +
         '<div class="sub">本周已练 ' + weekDone + ' / ' + target + ' 次</div></div>' +
@@ -108,12 +169,15 @@
       html += '</div></div>';
 
       html += '<div class="stack">';
-      html += '<div class="card card-pad"><div class="row-between" style="margin-bottom:8px"><h3>打卡日历</h3>' +
-        '<span class="tiny faint">近 12 周</span></div><div class="heat">';
-      F.heatmap(84, ctx.today).forEach(function (d) {
-        html += '<i class="' + (d.on ? 'on' : '') + (d.today ? ' today' : '') + '" title="' + d.date + '"></i>';
-      });
-      html += '</div></div>';
+      html += '<div class="card card-pad"><div class="row-between" style="margin-bottom:8px"><h3>本月概览</h3>' +
+        '<span class="tiny faint">' + U.escape(U.monthTitle(monthKey)) + '</span></div>' +
+        '<div class="mini-list">' +
+        '<div class="kv"><span class="muted small">训练天数</span><span class="bold num">' + monthStats.days + ' 天</span></div>' +
+        '<div class="kv"><span class="muted small">完成组数</span><span class="bold num">' + monthStats.sets + ' 组</span></div>' +
+        '<div class="kv"><span class="muted small">总容量</span><span class="bold num">' + monthStats.volume + ' kg</span></div>' +
+        '<div class="kv"><span class="muted small">练过的部位</span><span class="small">' +
+        (monthStats.parts.length ? U.escape(monthStats.parts.slice(0, 3).join('、')) : '还没开始') + '</span></div>' +
+        '</div></div>';
 
       html += '<div class="card card-pad"><div class="row-between" style="margin-bottom:8px"><h3>体重</h3>' +
         '<span class="tiny faint">最近 7 次</span></div>';
@@ -125,6 +189,8 @@
         '<button class="btn btn-sm" data-act="save-weight">记录</button></div>';
       html += '</div>';
       html += '</div></div>';
+
+      html += calendarHtml(monthKey, cells, ctx);
       return html;
     },
 
@@ -164,8 +230,45 @@
         });
       }
 
+      function openDay(date) {
+        var d = F.dayDetail(date, ctx.today);
+        var html = '<div class="row wrap" style="gap:7px;margin-bottom:14px">' +
+          '<span class="tag ' + (d.hasSession ? 'tag-accent' : '') + '">' +
+          (d.hasSession ? '已练' : (d.template && d.template.isRest ? '休息日' : (d.template ? '计划中' : '没安排'))) + '</span>' +
+          (d.part ? '<span class="tag tag-info">' + U.escape(d.part) + '</span>' : '') +
+          (d.setCount ? '<span class="tag">' + (d.doneSets ? d.doneSets + '/' : '') + d.setCount + ' 组</span>' : '') +
+          (d.volume ? '<span class="tag">' + d.volume + ' kg 容量</span>' : '') +
+          '</div>';
+
+        if (!d.exercises.length) {
+          html += '<div class="note">' +
+            (d.template && d.template.isRest ? '这天按计划是休息日。' : '这天既没有训练记录，也没有周模板。') + '</div>';
+        } else {
+          html += '<div class="day-detail">';
+          d.exercises.forEach(function (ex) {
+            html += '<div class="dd-ex"><div class="dd-ex-name">' + U.escape(ex.name) +
+              (ex.plan ? ' <span class="tag">计划</span>' : '') + '</div><div class="dd-sets">';
+            ex.sets.forEach(function (s) {
+              html += '<span class="dd-set ' + (s.done ? 'done' : '') + '">' +
+                (s.reps === '' ? '—' : s.reps) + ' 次' + (s.weight !== '' ? ' @' + s.weight + 'kg' : '') + '</span>';
+            });
+            html += '</div></div>';
+          });
+          html += '</div>';
+        }
+        if (d.feel) html += '<div class="note" style="margin-top:14px">训练感受：' + U.escape(d.feel) + '</div>';
+        App.ui.openDrawer({ title: U.fmtDateCN(date) + ' 的训练', body: html });
+      }
+
       App.ui.bind(root, {
         acts: {
+          'fit-month': function (d) {
+            var delta = Number(d.delta) || 0;
+            var base = App.uiState.fitMonth || U.monthKey(ctx.today);
+            App.uiState.fitMonth = delta === 0 ? '' : U.shiftMonth(base, delta);
+            App.refresh();
+          },
+          'fit-day': function (d) { openDay(d.date); },
           'edit-template': function (d) { openTemplate(Number(d.weekday)); },
           start: function () {
             F.startSession(ctx.today).then(function (s) {

@@ -184,4 +184,98 @@
     });
   };
 
+  // ---------- 训练概况：某天的部位 / 动作 / 组次 ----------
+  fit.sessionInfo = function (session, template, tpls) {
+    var parts = tpls || S().list('templates');
+    var part = '';
+    if (session) {
+      var tpl = parts.filter(function (t) { return t.id === session.templateId; })[0];
+      part = (tpl && tpl.name) || session.part || '训练';
+    } else if (template && !template.isRest) {
+      part = template.name;
+    }
+    var names = [];
+    var setCount = 0, doneSets = 0, volume = 0;
+    var source = session ? (session.exercises || []) : ((template && template.exercises) || []);
+    source.forEach(function (ex) {
+      names.push(ex.name);
+      if (session) {
+        (ex.sets || []).forEach(function (set) {
+          setCount++;
+          if (set.done) doneSets++;
+          volume += (Number(set.reps) || 0) * (Number(set.weight) || 0);
+        });
+      } else {
+        setCount += ex.targetSets || 0;
+      }
+    });
+    return {
+      hasSession: !!session,
+      part: part,
+      names: names,
+      exerciseCount: names.length,
+      setCount: setCount,
+      doneSets: doneSets,
+      volume: Math.round(volume)
+    };
+  };
+
+  // 月历数据：每天带上部位、动作数、组数与是否休息
+  fit.monthData = function (monthKey, today) {
+    var sessions = S().list('sessions');
+    var tpls = S().list('templates');
+    var byDate = {};
+    sessions.forEach(function (s) { byDate[s.date] = s; });
+    var tplByDay = {};
+    tpls.forEach(function (t) { tplByDay[t.weekday] = t; });
+
+    return U.monthCells(monthKey, S().settings.weekStart).map(function (cell) {
+      var session = byDate[cell.date] || null;
+      var tpl = tplByDay[U.weekday(cell.date)] || null;
+      return Object.assign({}, cell, fit.sessionInfo(session, tpl, tpls), {
+        isToday: cell.date === today,
+        planned: !!(tpl && !tpl.isRest),
+        rest: !!(tpl && tpl.isRest) && !session
+      });
+    });
+  };
+
+  // 点开某一天看到的明细
+  fit.dayDetail = function (date, today) {
+    var session = fit.todaySession(date);
+    var tpl = fit.templateFor(U.weekday(date));
+    var info = fit.sessionInfo(session, tpl);
+    var exercises = [];
+    if (session) {
+      (session.exercises || []).forEach(function (ex) {
+        exercises.push({
+          name: ex.name,
+          sets: (ex.sets || []).map(function (s) {
+            return {
+              reps: s.reps === '' ? '' : Number(s.reps),
+              weight: s.weight === '' ? '' : Number(s.weight),
+              done: !!s.done
+            };
+          })
+        });
+      });
+    } else if (tpl && !tpl.isRest) {
+      (tpl.exercises || []).forEach(function (ex) {
+        var sets = [];
+        for (var i = 0; i < (ex.targetSets || 3); i++) {
+          sets.push({ reps: ex.targetReps || 10, weight: '', done: false });
+        }
+        exercises.push({ name: ex.name, plan: true, sets: sets });
+      });
+    }
+    return Object.assign({
+      date: date,
+      isToday: date === today,
+      template: tpl,
+      session: session,
+      exercises: exercises,
+      feel: session ? session.feel : ''
+    }, info);
+  };
+
 })(typeof window !== 'undefined' ? window : globalThis);

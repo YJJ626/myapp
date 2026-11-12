@@ -35,31 +35,57 @@
 
       var html = '<div class="page-head"><div class="grow"><h1>开发工作</h1>' +
         '<div class="sub">' + (active.length ? (active.length + ' 个项目在推进') : '课程、比赛、自己的项目都放这儿') + '</div></div>' +
-        '<div class="page-actions"><button class="btn btn-sm btn-primary" data-act="new-project">新建项目</button></div></div>';
+        '<div class="page-actions">' +
+        '<button class="btn btn-sm" data-act="new-work"' + (projects.length ? '' : ' disabled') + '>' +
+        App.ui.icon('plus', 14) + '新增工作项</button>' +
+        '<button class="btn btn-sm btn-primary" data-act="new-project">' + App.ui.icon('plus', 14) + '新建项目</button>' +
+        '</div></div>';
 
       if (!projects.length) {
         html += '<div class="card">' + App.ui.empty({
           title: '还没有项目',
-          hint: '一个项目一张卡，填上截止日期就会在首页倒数',
+          hint: '一个项目一张卡，填上截止日期就会在首页倒数；建好之后就能往里加工作项',
           action: 'new-project',
           actionLabel: '建第一个项目'
         }) + '</div>';
       } else {
+        // 随手加一条工作项：不用先进项目
+        var orderedProjects = active.concat(projects.filter(function (p) { return p.stage === 'done'; }));
+        App.uiState = App.uiState || {};
+        var selectedId = App.uiState.devProject;
+        if (!selectedId || !orderedProjects.some(function (p) { return p.id === selectedId; })) {
+          selectedId = orderedProjects[0] ? orderedProjects[0].id : '';
+        }
+        html += '<div class="work-add">' +
+          '<span class="faint">' + App.ui.icon('plus', 15) + '</span>' +
+          '<select data-work-project data-change="dev-project" title="加到哪个项目">' +
+          orderedProjects.map(function (p) {
+            return '<option value="' + p.id + '"' + (p.id === selectedId ? ' selected' : '') + '>' +
+              U.escape(p.name) + '</option>';
+          }).join('') + '</select>' +
+          '<input type="text" data-work-text data-enter="quick-work" placeholder="写一条要做的具体事，回车即加入">' +
+          '<button class="btn btn-sm btn-primary" data-act="quick-work">加入</button>' +
+          '</div>';
+
         html += '<div class="grid-cards">';
         projects.forEach(function (p) {
           var ddl = ddlText(p, snap.today);
           var next = (p.todos || []).filter(function (t) { return t.isNext; })[0];
-          html += '<div class="card proj-card" data-act="open-project" data-id="' + p.id + '">' +
+          var openTodos = (p.todos || []).filter(function (t) { return !t.done; }).length;
+          html += '<div class="card proj-card proj-card-anchor" data-act="open-project" data-id="' + p.id + '">' +
             '<div class="row-between" style="margin-bottom:6px">' +
-            '<span class="bold ellipsis">' + U.escape(p.name) + '</span>' +
+            '<span class="bold ellipsis proj-title">' + U.escape(p.name) + '</span>' +
             '<span class="tag">' + U.escape(devLogic.types[p.type] || '课程') + '</span></div>' +
             '<div class="row" style="gap:10px"><span class="ddl ' + ddl.cls + '">' + ddl.text + '</span>' +
-            '<span class="tag tag-info">' + U.escape(devLogic.stageName(p.stage)) + '</span></div>' +
+            '<span class="tag tag-info">' + U.escape(devLogic.stageName(p.stage)) + '</span>' +
+            (openTodos ? '<span class="tag">' + openTodos + ' 项待办</span>' : '') + '</div>' +
             '<div style="margin:9px 0 6px">' + App.ui.bar(p.progress || 0) + '</div>' +
             '<div class="small muted ellipsis">' +
             (next ? '下一步：' + U.escape(next.text) : (p.nextStep ? '下一步：' + U.escape(p.nextStep) : '还没定下一步')) +
             '</div>' +
             milestone(p) +
+            '<button class="btn btn-sm proj-quick" data-act="work-to-project" data-id="' + p.id + '" ' +
+            'title="给这个项目加一条工作项">' + App.ui.icon('plus', 13) + '加项</button>' +
             '</div>';
         });
         html += '</div>';
@@ -156,7 +182,9 @@
             '</div>';
         });
         body += '</div>';
-        body += '<input type="text" data-new-todo placeholder="加一条待办，回车" style="margin-top:8px">';
+        body += '<input type="text" data-new-todo placeholder="加一条工作项，回车或点添加" style="margin-top:8px">' +
+          '<div class="row" style="margin-top:6px;justify-content:flex-end">' +
+          '<button class="btn btn-sm btn-primary" data-add-todo>' + App.ui.icon('plus', 13) + '添加工作项</button></div>';
 
         body += '<hr><h3 style="margin-bottom:8px">开发日志</h3>';
         body += '<textarea data-log placeholder="今天改了什么、卡在哪（一天记一条就够）"></textarea>' +
@@ -207,11 +235,14 @@
               devLogic.setProgress(id, e.target.value).then(refreshDrawer);
             });
             var newTodo = panel.querySelector('[data-new-todo]');
+            function submitTodo() {
+              if (!newTodo.value.trim()) { App.ui.toast('先写内容'); return; }
+              devLogic.addTodo(id, newTodo.value).then(refreshDrawer);
+            }
             newTodo.addEventListener('keydown', function (e) {
-              if (e.key === 'Enter' && newTodo.value.trim()) {
-                devLogic.addTodo(id, newTodo.value).then(refreshDrawer);
-              }
+              if (e.key === 'Enter') { e.preventDefault(); submitTodo(); }
             });
+            panel.querySelector('[data-add-todo]').addEventListener('click', submitTodo);
             panel.querySelectorAll('[data-toggle-todo]').forEach(function (el) {
               el.addEventListener('click', function () {
                 devLogic.toggleTodo(id, el.getAttribute('data-toggle-todo')).then(refreshDrawer);
@@ -263,10 +294,70 @@
         });
       }
 
+      function openWorkItem(presetId) {
+        var all = App.store.list('projects');
+        if (!all.length) { openNew(); return; }
+        var open = all.filter(function (p) { return p.stage !== 'done'; });
+        var ordered = open.concat(all.filter(function (p) { return p.stage === 'done'; }));
+        var sel = presetId || (ordered[0] && ordered[0].id);
+
+        App.ui.openDrawer({
+          title: '新增工作项',
+          body:
+            App.ui.field('加到哪个项目', '<select data-proj>' + ordered.map(function (p) {
+              return '<option value="' + p.id + '"' + (p.id === sel ? ' selected' : '') + '>' +
+                U.escape(p.name) + (p.stage === 'done' ? '（已完成）' : '') + '</option>';
+            }).join('') + '</select>') +
+            App.ui.field('工作项（一行一条，可以一次写多条）',
+              '<textarea data-items placeholder="例如：把登录接口联调完&#10;补 README&#10;截图存档"></textarea>') +
+            '<label class="row small" style="gap:7px;cursor:pointer;margin-bottom:6px">' +
+            '<input type="checkbox" data-next style="width:auto"> 把第一条设为「下一步」</label>' +
+            '<div class="note">工作项加进项目后，卡片上会显示"还有 N 项待办"，点开项目就能逐条勾掉。</div>',
+          foot: '<button class="btn" data-cancel>取消</button>' +
+            '<button class="btn btn-primary" data-save>加入项目</button>',
+          onMount: function (panel, close) {
+            panel.querySelector('[data-cancel]').addEventListener('click', close);
+            panel.querySelector('[data-items]').focus();
+            panel.querySelector('[data-save]').addEventListener('click', function () {
+              var pid = panel.querySelector('[data-proj]').value;
+              var lines = panel.querySelector('[data-items]').value.split('\n')
+                .map(function (s) { return s.trim(); }).filter(Boolean);
+              if (!lines.length) { App.ui.toast('先写一条工作项'); return; }
+              var asNext = panel.querySelector('[data-next]').checked;
+              var chain = Promise.resolve();
+              lines.forEach(function (text, i) {
+                chain = chain.then(function () { return devLogic.addTodo(pid, text, asNext && i === 0); });
+              });
+              chain.then(function () {
+                close();
+                App.refresh();
+                App.ui.toast('已加入 ' + lines.length + ' 条工作项');
+              });
+            });
+          }
+        });
+      }
+
       App.ui.bind(root, {
         acts: {
           'new-project': openNew,
-          'open-project': function (d) { openProject(d.id); }
+          'open-project': function (d) { openProject(d.id); },
+          'new-work': function () { openWorkItem(''); },
+          'work-to-project': function (d) { openWorkItem(d.id); },
+          'dev-project': function (d, el) {
+            App.uiState.devProject = el.value;
+          },
+          'quick-work': function () {
+            var sel = root.querySelector('[data-work-project]');
+            var input = root.querySelector('[data-work-text]');
+            if (!sel || !input) return;
+            if (!input.value.trim()) { App.ui.toast('先写一条工作项'); input.focus(); return; }
+            App.uiState.devProject = sel.value;
+            devLogic.addTodo(sel.value, input.value).then(function () {
+              App.ui.toast('已加入「' + (App.store.get('projects', sel.value) || {}).name + '」');
+              App.refresh();
+            });
+          }
         }
       });
 

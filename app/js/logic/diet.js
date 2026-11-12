@@ -124,4 +124,70 @@
     }, Promise.resolve()).then(function () { return done.length; });
   };
 
+  // ---------- 某一天的饮食明细 ----------
+  diet.dayTotals = function (date) {
+    var foods = {};
+    S().list('foods').forEach(function (f) { foods[f.id] = f; });
+    var out = {
+      date: date,
+      actual: { kcal: 0, protein: 0 },
+      meals: [],
+      filled: 0,
+      water: diet.water(date)
+    };
+    diet.MEALS.forEach(function (m) {
+      var meal = diet.mealOf(date, m.key);
+      var rec = { key: m.key, name: m.name, kcal: 0, items: [] };
+      ((meal && meal.actual) || []).forEach(function (it) {
+        var f = foods[it.foodId];
+        if (!f) return;
+        var k = (Number(f.kcal) || 0) * (Number(it.qty) || 0);
+        rec.kcal += k;
+        rec.items.push({ name: f.name, qty: it.qty, kcal: Math.round(k) });
+        out.actual.kcal += k;
+        out.actual.protein += (Number(f.protein) || 0) * (Number(it.qty) || 0);
+      });
+      if (rec.items.length) out.filled++;
+      rec.kcal = Math.round(rec.kcal);
+      out.meals.push(rec);
+    });
+    out.actual.kcal = Math.round(out.actual.kcal);
+    out.actual.protein = Math.round(out.actual.protein);
+    return out;
+  };
+
+  // ---------- 月历数据：每天吃了多少 ----------
+  diet.monthData = function (monthKey, today, goal) {
+    var foods = {};
+    S().list('foods').forEach(function (f) { foods[f.id] = f; });
+    var byDate = {};
+    S().list('meals').forEach(function (m) {
+      var row = byDate[m.date] = byDate[m.date] || { kcal: 0, meals: 0 };
+      var has = false;
+      (m.actual || []).forEach(function (it) {
+        var f = foods[it.foodId];
+        if (!f) return;
+        has = true;
+        row.kcal += (Number(f.kcal) || 0) * (Number(it.qty) || 0);
+      });
+      if (has) row.meals++;
+    });
+    var metas = {};
+    S().list('dayMetas').forEach(function (m) { metas[m.id] = m; });
+    var target = (goal && goal.kcal) || S().settings.goals.kcal || 0;
+
+    return U.monthCells(monthKey, S().settings.weekStart).map(function (cell) {
+      var row = byDate[cell.date] || { kcal: 0, meals: 0 };
+      var kcal = Math.round(row.kcal);
+      return Object.assign({}, cell, {
+        kcal: kcal,
+        meals: row.meals,
+        water: metas[cell.date] ? (metas[cell.date].waterCups || 0) : 0,
+        isToday: cell.date === today,
+        pct: target ? Math.min(100, Math.round(kcal / target * 100)) : 0,
+        over: !!(target && kcal > target)
+      });
+    });
+  };
+
 })(typeof window !== 'undefined' ? window : globalThis);

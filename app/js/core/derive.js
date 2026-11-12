@@ -148,8 +148,9 @@
     var done = d.weekSessions(snap).length;
     var target = ((snap.settings || {}).goals || {}).weeklyWorkouts || 3;
     if (!tpl) return { hasTemplate: false, weekDone: done, weekTarget: target };
-    if (tpl.isRest) return { rest: true, weekDone: done, weekTarget: target, id: tpl.id };
+    if (tpl.isRest) return { hasTemplate: true, rest: true, weekDone: done, weekTarget: target, id: tpl.id };
     return {
+      hasTemplate: true,
       rest: false,
       id: tpl.id,
       name: tpl.name,

@@ -22,18 +22,104 @@
       '</div></div>';
   }
 
+  function fmtNum(n) {
+    n = Number(n) || 0;
+    if (n >= 10000) {
+      var v = U.round(n / 10000, 2);
+      return (v % 1 === 0 ? v.toFixed(1) : String(v)) + ' 万';
+    }
+    return String(n);
+  }
+
+  function kpi(label, val, sub) {
+    return '<div class="kpi"><div class="kpi-label">' + U.escape(label) + '</div>' +
+      '<div class="kpi-val">' + val + '</div>' +
+      '<div class="kpi-sub">' + sub + '</div></div>';
+  }
+
+  function statsView(snap, ctx) {
+    var ov = M.overview(snap.contents, ctx.today);
+    if (!ov.rows.length) {
+      return '<div class="card">' + App.ui.empty({
+        title: '还没有发布数据',
+        hint: '把内容拖到「已发布」，再填上播放、点赞、涨粉，这里就会出现图表',
+        action: 'new',
+        actionLabel: '先建一条内容'
+      }) + '</div>';
+    }
+
+    var html = '<div class="kpi-grid">';
+    html += kpi('总播放', fmtNum(ov.totals.view), ov.totals.count + ' 条已发布');
+    html += kpi('总点赞', fmtNum(ov.totals.like), '互动率 ' + ov.totals.engagement + '%');
+    html += kpi('净涨粉', (ov.totals.fans > 0 ? '+' : '') + fmtNum(ov.totals.fans), '按手填数据累计');
+    html += kpi('篇均播放', fmtNum(ov.totals.avgView), '最高 ' + fmtNum(ov.maxView));
+    html += '</div>';
+
+    // 每条内容的播放量
+    html += '<div class="card" style="margin-top:14px"><div class="card-head">' +
+      '<span class="head-icon">' + App.ui.icon('chart', 15) + '<h3>每条内容的播放量</h3></span>' +
+      '<span class="small faint">点一下去补或改数据</span></div><div class="card-pad">' +
+      '<div class="hbar-list">';
+    ov.rows.slice(0, 10).forEach(function (r) {
+      var pct = ov.maxView ? Math.max(3, Math.round(r.view / ov.maxView * 100)) : 0;
+      html += '<div class="hbar-row" data-act="open" data-id="' + r.id + '" style="cursor:pointer">' +
+        '<span class="hbar-label">' + U.escape(r.title) +
+        '<span class="plat">' + U.escape(r.platformName) + '</span></span>' +
+        '<span class="hbar-track"><i style="width:' + pct + '%;background:' + (PLATFORM_COLOR[r.platform] || 'var(--accent)') + '"></i></span>' +
+        '<span class="hbar-val">' + fmtNum(r.view) + '</span>' +
+        '</div>';
+    });
+    html += '</div></div></div>';
+
+    // 近六周趋势
+    html += '<div class="card" style="margin-top:14px"><div class="card-head">' +
+      '<span class="head-icon">' + App.ui.icon('clock', 15) + '<h3>近 6 周发布与播放</h3></span>' +
+      '<span class="small faint">柱高＝播放 · 数字＝发布条数</span></div><div class="card-pad">';
+    html += '<div class="col-chart">';
+    ov.weeks.forEach(function (w) {
+      var h = ov.maxWeekView ? Math.max(w.view ? 6 : 0, Math.round(w.view / ov.maxWeekView * 100)) : 0;
+      html += '<div class="col" title="' + U.escape(w.key) + '：' + w.count + ' 条 · ' + w.view + ' 播放">' +
+        '<span class="col-y">' + (w.count || '') + '</span>' +
+        '<span class="col-bar ' + (w.view ? '' : 'zero') + '" style="height:' + h + '%"></span>' +
+        '<span class="col-x">' + U.escape(w.label) + '</span>' +
+        '</div>';
+    });
+    html += '</div>';
+    html += '<div class="legend-row" style="margin-top:10px"><span><i style="background:var(--accent)"></i>本周播放量</span>' +
+      '<span><i style="background:var(--surface-3)"></i>这周没发东西</span></div>';
+    html += '</div></div>';
+
+    // 平台分布
+    html += '<div class="card" style="margin-top:14px"><div class="card-head"><h3>平台分布</h3>' +
+      '<span class="small faint">按播放量排序</span></div><div class="card-pad"><div class="hbar-list">';
+    var maxP = ov.platforms.length ? ov.platforms[0].view : 0;
+    ov.platforms.forEach(function (p) {
+      var pct = maxP ? Math.max(3, Math.round(p.view / maxP * 100)) : 0;
+      html += '<div class="hbar-row">' +
+        '<span class="hbar-label">' + U.escape(p.name) + '<span class="plat">' + p.count + ' 条</span></span>' +
+        '<span class="hbar-track"><i style="width:' + pct + '%;background:' + (PLATFORM_COLOR[p.key] || 'var(--accent)') + '"></i></span>' +
+        '<span class="hbar-val">' + fmtNum(p.view) + '</span></div>';
+    });
+    html += '</div></div></div>';
+
+    return html;
+  }
+
   views.media = {
     title: '自媒体',
+
     render: function (snap, ctx) {
       App.uiState = App.uiState || {};
-      var view = App.uiState.mediaView || 'board';
+      var view = (ctx.params && ctx.params.view) || App.uiState.mediaView || 'board';
+      if (view !== 'board' && view !== 'schedule' && view !== 'data') view = 'board';
+      App.uiState.mediaView = view;
       var contents = snap.contents || [];
 
       var html = '<div class="page-head"><div class="grow"><h1>自媒体</h1>' +
         '<div class="sub">' + contents.length + ' 条内容 · ' +
         M.byStage(contents, 'scheduled').length + ' 条待发布</div></div>' +
         '<div class="page-actions">' +
-        App.ui.seg([{ key: 'board', name: '看板' }, { key: 'schedule', name: '本周排期' }], view, 'switch-view') +
+        App.ui.seg([{ key: 'board', name: '看板' }, { key: 'schedule', name: '本周排期' }, { key: 'data', name: '数据' }], view, 'switch-view') +
         '<button class="btn btn-sm btn-primary" data-act="new">新建内容</button>' +
         '</div></div>';
 
@@ -55,6 +141,8 @@
           html += '</div>';
         });
         html += '</div>';
+      } else if (view === 'data') {
+        html += statsView(snap, ctx);
       } else {
         var plan = M.weekPlan(contents, ctx.weekStartKey);
         html += '<div class="sched">';

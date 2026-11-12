@@ -10,10 +10,30 @@
     if (opts.idle) cls += ' idle';
     return '<button class="' + cls + '" data-act="jump" data-to="' + opts.to + '"' +
       (opts.focus ? ' data-focus="' + U.escape(opts.focus) + '"' : '') + '>' +
-      '<div class="sum-label">' + U.escape(opts.label) + '</div>' +
-      '<div class="sum-main">' + opts.main + '</div>' +
-      '<div class="sum-sub">' + opts.sub + '</div>' +
+      '<span class="sum-top"><span class="sum-ic">' + App.ui.icon(opts.icon || 'bolt', 15) + '</span>' +
+      '<span class="sum-label">' + U.escape(opts.label) + '</span></span>' +
+      '<span class="sum-main">' + opts.main + '</span>' +
+      '<span class="sum-sub">' + opts.sub + '</span>' +
       '</button>';
+  }
+
+  function ring(pct) {
+    var r = 36, c = 2 * Math.PI * r;
+    var p = U.clamp(pct, 0, 100);
+    return '<svg viewBox="0 0 86 86" width="86" height="86">' +
+      '<circle cx="43" cy="43" r="' + r + '" fill="none" stroke="var(--surface-3)" stroke-width="6"/>' +
+      '<circle cx="43" cy="43" r="' + r + '" fill="none" stroke="var(--accent)" stroke-width="6" ' +
+      'stroke-linecap="round" stroke-dasharray="' + U.round(c, 1) + '" ' +
+      'stroke-dashoffset="' + U.round(c * (1 - p / 100), 1) + '"/></svg>';
+  }
+
+  function greeting() {
+    var hh = new Date().getHours();
+    if (hh < 6) return '还醒着';
+    if (hh < 11) return '早上好';
+    if (hh < 14) return '中午好';
+    if (hh < 18) return '下午好';
+    return '晚上好';
   }
 
   function short(s, n) {
@@ -28,13 +48,17 @@
       var html = '';
       var dateCN = U.fmtDateCN(snap.today);
 
-      html += '<div class="page-head">';
-      html += '<div class="grow"><h1>' + U.escape(dateCN) + '</h1>';
-      html += '<input type="text" data-enter="save-headline" value="' + U.escape(h.headline) + '" ' +
-        'placeholder="今天最重要的一件事" style="border:0;background:transparent;padding:0;margin-top:5px;' +
-        'font-size:13px;color:var(--text-2);max-width:440px">';
+      var pct = h.taskCount.total ? h.taskCount.done / h.taskCount.total * 100 : 0;
+      html += '<div class="card home-hero">';
+      html += '<div class="hero-ring">' + ring(pct) +
+        '<div class="ring-val">' + h.taskCount.done + '<small>已做</small></div></div>';
+      html += '<div class="grow"><div class="hero-title">' + greeting() + '</div>';
+      html += '<div class="hero-sub">' + U.escape(dateCN) + ' · 今天排了 ' + h.taskCount.total +
+        ' 项，完成 ' + h.taskCount.done + ' 项</div>';
+      html += '<input type="text" class="headline-input" data-enter="save-headline" value="' + U.escape(h.headline) + '" ' +
+        'placeholder="今天最重要的一件事（回车保存）">';
       html += '</div><div class="page-actions">';
-      html += '<button class="btn btn-sm" data-act="quick">⌘K 快速记录</button>';
+      html += '<button class="btn btn-sm" data-act="quick">' + App.ui.icon('bolt', 14) + '快速记录</button>';
       html += '<button class="btn btn-sm btn-primary" data-act="jump" data-to="today">去排今天的计划</button>';
       html += '</div></div>';
 
@@ -88,7 +112,7 @@
 
       var dev = h.dev;
       html += sumCard({
-        label: '开发工作', to: 'dev', focus: dev ? dev.id : '',
+        label: '开发工作', to: 'dev', icon: 'dev', focus: dev ? dev.id : '',
         alert: !!(dev && (dev.overdue || dev.soon)),
         idle: !dev,
         main: dev ? (dev.overdue ? ('已逾期 ' + Math.abs(dev.daysLeft) + ' 天') : ('还剩 ' + dev.daysLeft + ' 天')) : '暂无在做的项目',
@@ -97,7 +121,7 @@
 
       var cons = h.consult;
       html += sumCard({
-        label: '咨询工作', to: 'consult',
+        label: '咨询工作', to: 'consult', icon: 'consult',
         idle: cons.count === 0,
         alert: cons.maxWaitDays >= 2,
         main: cons.count ? (cons.count + ' 条待回复') : '都回完了',
@@ -106,7 +130,7 @@
 
       var media = h.media;
       html += sumCard({
-        label: '自媒体', to: 'media',
+        label: '自媒体', to: 'media', icon: 'media',
         idle: media.type === 'none',
         main: media.type === 'today' ? ('今天发：' + U.escape(short(media.title, 10)))
           : media.type === 'scheduled' ? (media.count + ' 条待发布')
@@ -118,7 +142,7 @@
 
       var fit = h.fitness;
       html += sumCard({
-        label: '健身计划', to: 'fitness',
+        label: '健身计划', to: 'fitness', icon: 'fitness',
         idle: !fit.hasTemplate || fit.rest,
         main: fit.rest ? '今天休息' : (fit.hasTemplate ? ('今天：' + U.escape(short(fit.name, 10))) : '还没有周模板'),
         sub: fit.hasTemplate ? ('本周已练 ' + fit.weekDone + ' / ' + fit.weekTarget + ' 次') : '先建周一那套训练'
@@ -126,7 +150,7 @@
 
       var diet = h.diet;
       html += sumCard({
-        label: '饮食计划', to: 'diet',
+        label: '饮食计划', to: 'diet', icon: 'diet',
         main: diet.kcal + ' / ' + diet.target + ' kcal',
         sub: diet.nextMeal
           ? ('下一餐 ' + diet.nextMealName + (diet.nextNames.length ? '：' + U.escape(short(diet.nextNames.join('、'), 12)) : ''))
@@ -135,7 +159,7 @@
 
       var games = h.games;
       html += sumCard({
-        label: '游戏娱乐', to: 'games',
+        label: '游戏娱乐', to: 'games', icon: 'games',
         alert: games.over,
         main: games.over ? ('超了 ' + U.minutesToHM(games.used - games.goal)) : ('本周剩 ' + U.minutesToHM(games.remain)),
         sub: '已用 ' + U.minutesToHM(games.used) + (games.current ? (' · ' + U.escape(short(games.current, 8))) : '')

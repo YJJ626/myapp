@@ -119,6 +119,43 @@
     return pad(d.getHours()) + ':' + pad(d.getMinutes());
   };
 
+  // ---------- 月历 ----------
+  U.monthKey = function (key) { return String(key || '').slice(0, 7); };
+
+  U.shiftMonth = function (monthKey, delta) {
+    var p = String(monthKey).split('-');
+    var d = new Date(Number(p[0]), Number(p[1]) - 1 + Number(delta || 0), 1);
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1);
+  };
+
+  U.monthTitle = function (monthKey) {
+    var p = String(monthKey).split('-');
+    return p[0] + ' 年 ' + Number(p[1]) + ' 月';
+  };
+
+  // 返回当月日历格子：固定 7 列，最多 6 行，末尾整行不属于本月则裁掉
+  U.monthCells = function (monthKey, weekStartDay) {
+    var p = String(monthKey).split('-');
+    var first = new Date(Number(p[0]), Number(p[1]) - 1, 1);
+    var start = weekStartDay || 1;
+    var dow = first.getDay() === 0 ? 7 : first.getDay();
+    var back = ((dow - start) % 7 + 7) % 7;
+    var begin = new Date(first.getTime());
+    begin.setDate(begin.getDate() - back);
+    var out = [];
+    for (var i = 0; i < 42; i++) {
+      var d = new Date(begin.getTime());
+      d.setDate(begin.getDate() + i);
+      out.push({ date: U.dateKey(d), inMonth: d.getMonth() === first.getMonth() });
+    }
+    while (out.length > 35 && out.slice(35).every(function (c) { return !c.inMonth; })) {
+      out = out.slice(0, 35);
+    }
+    return out;
+  };
+
+  U.weekdayShort = ['一', '二', '三', '四', '五', '六', '日'];
+
   U.nowISO = function () {
     return new Date().toISOString();
   };

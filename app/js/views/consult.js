@@ -165,11 +165,38 @@
         App.ui.openDrawer({
           title: replied ? '这次咨询' : '回复这个问题',
           body: body,
-          foot: '<button class="btn" data-cancel>关闭</button>' +
+          foot: '<button class="btn btn-danger" data-del style="margin-right:auto">' +
+            App.ui.icon('trash', 13) + '删除这条</button>' +
+            (replied ? '<button class="btn" data-reopen>标回待回复</button>' : '') +
+            '<button class="btn" data-cancel>关闭</button>' +
             '<button class="btn btn-primary" data-save>' + (replied ? '保存修改' : '标记已回复') + '</button>',
           onMount: function (panel, close) {
             panel.querySelector('[data-cancel]').addEventListener('click', close);
             panel.querySelector('[data-conclusion]').focus();
+            panel.querySelector('[data-del]').addEventListener('click', function () {
+              App.ui.confirm({
+                title: '删除这条咨询',
+                message: '「' + c.person + '」这条记录会被删除，无法恢复。',
+                okLabel: '删除',
+                onOk: function () {
+                  C.remove(id).then(function () {
+                    close();
+                    App.refresh();
+                    App.ui.toast('已删除');
+                  });
+                }
+              });
+            });
+            var reopen = panel.querySelector('[data-reopen]');
+            if (reopen) {
+              reopen.addEventListener('click', function () {
+                C.reopen(id).then(function () {
+                  close();
+                  App.refresh();
+                  App.ui.toast('已放回待回复');
+                });
+              });
+            }
             panel.querySelector('[data-save]').addEventListener('click', function () {
               var conclusion = panel.querySelector('[data-conclusion]').value;
               if (!conclusion.trim()) { App.ui.toast('回复总得留个结论'); return; }
@@ -198,7 +225,30 @@
             (c.conclusion ? '<div class="small muted" style="margin-top:2px">结论：' + U.escape(c.conclusion) + '</div>' : '') +
             '</div>';
         });
-        App.ui.openDrawer({ title: name + ' 问过的事', body: body || '<div class="small faint">没有记录。</div>' });
+        App.ui.openDrawer({
+          title: name + ' 问过的事',
+          body: body || '<div class="small faint">没有记录。</div>',
+          foot: '<button class="btn btn-danger" data-del-person style="margin-right:auto">' +
+            App.ui.icon('trash', 13) + '删除这个人</button>' +
+            '<button class="btn" data-cancel>关闭</button>',
+          onMount: function (panel, close) {
+            panel.querySelector('[data-cancel]').addEventListener('click', close);
+            panel.querySelector('[data-del-person]').addEventListener('click', function () {
+              App.ui.confirm({
+                title: '删除这个人的全部记录',
+                message: '「' + name + '」的 ' + rows.length + ' 条咨询记录会一起删除，无法恢复。',
+                okLabel: '删除',
+                onOk: function () {
+                  C.removePerson(name).then(function (n) {
+                    close();
+                    App.refresh();
+                    App.ui.toast('已删除 ' + n + ' 条记录');
+                  });
+                }
+              });
+            });
+          }
+        });
       }
 
       App.ui.bind(root, {

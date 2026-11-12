@@ -87,6 +87,16 @@ function click(el) {
   el.dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
 }
 
+function lastDrawer() {
+  const all = doc.querySelectorAll('.drawer');
+  return all.length ? all[all.length - 1] : null;
+}
+function resetLayers() {
+  try { win.App.ui.closeAll(); } catch (e) { }
+  Array.from(doc.querySelectorAll('.drawer, .drawer-mask, .modal-mask, .quick')).forEach(function (el) { el.remove(); });
+}
+
+
 test('浏览器启动：导航九项齐全，首页有内容（AC-38）', async () => {
   await boot();
   const navs = Array.from(doc.querySelectorAll('.nav-item')).map(n => n.textContent.trim());
@@ -325,4 +335,145 @@ test('浏览器启动耗时在 2 秒内（AC-38）', async () => {
   await boot();
   ok(bootMs > 0 && bootMs < 2000, '启动超过 2 秒：' + bootMs + 'ms');
   console.log('      · 本次（jsdom）启动耗时 ' + bootMs + 'ms');
+});
+
+/* ---------------- 本轮六项改动的端到端验证 ---------------- */
+
+test('浏览器保存：点顶栏「保存」按钮立即落盘并提示（问题6）', async () => {
+  await boot();
+  resetLayers();
+  await go('home');
+  ok(doc.querySelector('#tb-save'), '顶栏应有保存状态');
+  const btn = doc.querySelector('#tb-save-btn');
+  ok(btn, '顶栏应有保存按钮');
+  click(btn);
+  await wait(function () { return doc.querySelector('.toast'); });
+  includes(doc.querySelector('.toast').textContent, '已保存');
+  await wait(function () { return /已保存/.test(doc.querySelector('#tb-save-text').textContent); });
+});
+
+test('浏览器保存：Ctrl+S 也能保存（问题6）', async () => {
+  await boot();
+  resetLayers();
+  await go('today');
+  key(doc.body, 's', { ctrlKey: true });
+  await wait(function () { return doc.querySelector('.toast'); });
+  includes(doc.querySelector('.toast').textContent, '已保存');
+});
+
+test('浏览器开发：快捷输入回车即加进项目（问题3）', async () => {
+  await boot();
+  resetLayers();
+  const p = await win.App.logic.dev.addProject({
+    name: '联调项目', deadline: win.App.util.addDays(win.App.derive.snap().today, 5)
+  });
+  win.App.refresh();
+  await go('dev');
+  const input = doc.querySelector('[data-work-text]');
+  ok(input, '开发页应有快捷输入框');
+  const sel = doc.querySelector('[data-work-project]');
+  sel.value = p.id;
+  input.value = '把登录接口联调完';
+  key(input, 'Enter');
+  await wait(function () { return win.App.store.get('projects', p.id).todos.length === 1; });
+  eq(win.App.store.get('projects', p.id).todos[0].text, '把登录接口联调完');
+});
+
+test('浏览器开发：项目卡片上的「加项」能打开新增工作项（问题3）', async () => {
+  await boot();
+  resetLayers();
+  const p = await win.App.logic.dev.addProject({
+    name: '卡片加项', deadline: win.App.util.addDays(win.App.derive.snap().today, 4)
+  });
+  win.App.refresh();
+  await go('dev');
+  click(doc.querySelector('[data-act="work-to-project"][data-id="' + p.id + '"]'));
+  await wait(function () { return doc.querySelector('.drawer'); });
+  const d1 = lastDrawer();
+  includes(d1.querySelector('.drawer-head').textContent, '新增工作项');
+  const ta = d1.querySelector('[data-items]');
+  ta.value = '截图存档\n补 README';
+  click(doc.querySelector('[data-save]'));
+  await wait(function () { return win.App.store.get('projects', p.id).todos.length === 2; });
+});
+
+test('浏览器咨询：删除客户后他的记录一起消失（问题4）', async () => {
+  await boot();
+  resetLayers();
+  const C = win.App.logic.consult;
+  await C.add({ person: '要被删的人', question: '这条记录应该被删掉' });
+  win.App.refresh();
+  await go('consult');
+  click(doc.querySelector('[data-act="open-person"]'));
+  await wait(function () { return doc.querySelector('.drawer'); });
+  click(lastDrawer().querySelector('[data-del-person]'));
+  await wait(function () { return doc.querySelector('.modal'); });
+  click(doc.querySelector('.modal [data-ok]'));
+  await wait(function () { return C.byPerson('要被删的人').length === 0; });
+  ok(!doc.querySelector('.drawer'), '删除后抽屉应关闭');
+});
+
+test('浏览器自媒体：切到「数据」出现图表（问题2）', async () => {
+  await boot();
+  resetLayers();
+  const c = await win.App.logic.media.add({ title: '图表稿', platform: 'bilibili', stage: 'published' });
+  await win.App.logic.media.setStats(c.id, { view: 8800, like: 320, fans: 40 });
+  win.App.refresh();
+  await go('media');
+  click(doc.querySelector('[data-act="switch-view"][data-key="data"]'));
+  await wait(function () { return doc.querySelector('.col-chart'); });
+  ok(doc.querySelector('.kpi-grid'), '应有 KPI 区');
+  ok(doc.querySelector('.hbar-track'), '应有条形图');
+  includes(doc.getElementById('main').innerHTML, '8800');
+});
+
+test('浏览器健身：点月历里的一天能看组次（问题5）', async () => {
+  await boot();
+  resetLayers();
+  const T = win.App.derive.snap().today;
+  await win.App.logic.fitness.saveTemplate({
+    weekday: win.App.util.weekday(T), name: '上肢 · 推', exercisesText: '卧推 4x8'
+  });
+  const sess = await win.App.logic.fitness.startSession(T);
+  await win.App.logic.fitness.updateSet(sess.id, 0, 0, { reps: 8, weight: 40, done: true });
+  win.App.refresh();
+  await go('fitness');
+  const cell = doc.querySelector('[data-act="fit-day"][data-date="' + T + '"]');
+  ok(cell, '月历里应能找到今天');
+  click(cell);
+  await wait(function () { return doc.querySelector('.drawer'); });
+  const text = lastDrawer().textContent;
+  includes(text, '卧推');
+  includes(text, '@40kg');
+  includes(text, '上肢 · 推');
+});
+
+test('浏览器饮食：点月历里的一天能看到当天食物（问题5）', async () => {
+  await boot();
+  resetLayers();
+  const T = win.App.derive.snap().today;
+  const f = await win.App.store.put('foods', { name: '鸡胸饭', kcal: 520, protein: 35, unit: '份' });
+  await win.App.logic.diet.addItem(T, 'lunch', 'actual', f.id, 1);
+  win.App.refresh();
+  await go('diet');
+  const cell = doc.querySelector('[data-act="diet-day"][data-date="' + T + '"]');
+  ok(cell, '月历里应能找到今天');
+  click(cell);
+  await wait(function () { return doc.querySelector('.drawer'); });
+  const dt = lastDrawer().textContent;
+  includes(dt, '鸡胸饭');
+  includes(dt, '520');
+});
+
+test('浏览器日历：翻到上个月再回来（问题5）', async () => {
+  await boot();
+  resetLayers();
+  await go('fitness');
+  const title = doc.querySelector('.cal-title').textContent;
+  click(doc.querySelector('[data-act="fit-month"][data-delta="-1"]'));
+  await wait(function () { return doc.querySelector('.cal-title').textContent !== title; });
+  const prev = doc.querySelector('.cal-title').textContent;
+  click(doc.querySelector('[data-act="fit-month"][data-delta="0"]'));
+  await wait(function () { return doc.querySelector('.cal-title').textContent === title; });
+  ok(prev !== title, '应能翻到上个月');
 });

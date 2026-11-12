@@ -48,6 +48,40 @@
     return '<div class="stat-box"><div class="stat-val">' + value + '</div><div class="stat-label">' + U.escape(label) + '</div></div>';
   };
 
+  // ---------- 图标（内联 SVG，不依赖任何外部资源） ----------
+  var ICONS = {
+    home: '<path d="M3.5 10.5 12 3.5l8.5 7"/><path d="M5.5 9.5V20h4v-5.5h5V20h4V9.5"/>',
+    today: '<rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M8 3.5v3.5M16 3.5v3.5M3.5 10.5h17"/>',
+    media: '<rect x="3" y="6" width="12.5" height="12" rx="2.5"/><path d="M15.5 11l5.5-3.2v8.4L15.5 13z"/>',
+    dev: '<path d="M9 8.5 4.5 12 9 15.5M15 8.5 19.5 12 15 15.5"/>',
+    consult: '<path d="M20.5 12.2c0 4.1-3.8 7.3-8.5 7.3-1 0-2-.14-2.9-.4L4 21l1.4-3.7A7 7 0 0 1 3.5 12.2C3.5 8.1 7.3 5 12 5s8.5 3.1 8.5 7.2z"/>',
+    fitness: '<path d="M6.5 9v6M3.5 10.5v3M17.5 9v6M20.5 10.5v3M6.5 12h11"/>',
+    diet: '<path d="M4 11.5h16a8 8 0 0 1-16 0z"/><path d="M9 7.2c0-1.2 1.2-1.6 1.2-2.7M13.5 7.2c0-1.2 1.2-1.6 1.2-2.7"/>',
+    games: '<rect x="2.5" y="7.5" width="19" height="9.5" rx="4.5"/><path d="M8 10.5v3.5M6.2 12.2h3.6"/><circle cx="16.2" cy="11.6" r=".9"/><circle cx="18.2" cy="13.6" r=".9"/>',
+    settings: '<path d="M4 7.5h9M17.5 7.5H20M4 16.5h4M12.5 16.5H20"/><circle cx="15" cy="7.5" r="2.2"/><circle cx="10" cy="16.5" r="2.2"/>',
+    plus: '<path d="M12 5.5v13M5.5 12h13"/>',
+    save: '<path d="M5 4.5h10.5L19 8v11.5H5z"/><path d="M8.5 4.5v4h6v-4M8.5 19.5v-6h7v6"/>',
+    trash: '<path d="M4.5 7h15M9.5 7V4.8h5V7M6.5 7l1 12.5h9L17.5 7"/>',
+    left: '<path d="M14.5 6l-6 6 6 6"/>',
+    right: '<path d="M9.5 6l6 6-6 6"/>',
+    search: '<circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.6-4.6"/>',
+    moon: '<path d="M20 14.2A8.2 8.2 0 0 1 9.8 4a8.4 8.4 0 1 0 10.2 10.2z"/>',
+    sun: '<circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M18.4 5.6 17 7M7 17l-1.4 1.4"/>',
+    bolt: '<path d="M13 3 6 13.5h4.5L10 21l7-10.5h-4.5z"/>',
+    chart: '<path d="M4 19.5h16"/><path d="M7.5 19.5V12M12 19.5V6.5M16.5 19.5v-5"/>',
+    check: '<path d="M5 12.5l4.5 4.5L19 7"/>',
+    clock: '<circle cx="12" cy="12" r="8"/><path d="M12 7.5V12l3 2"/>',
+    user: '<circle cx="12" cy="8.5" r="3.5"/><path d="M5.5 20c.6-3.4 3.3-5.2 6.5-5.2s5.9 1.8 6.5 5.2"/>',
+    book: '<path d="M4.5 5.5c2.6-1 5.2-1 7.5.6 2.3-1.6 4.9-1.6 7.5-.6v12.6c-2.6-1-5.2-1-7.5.6-2.3-1.6-4.9-1.6-7.5-.6z"/><path d="M12 6.1v12.6"/>'
+  };
+
+  ui.icon = function (name, size) {
+    var d = ICONS[name] || ICONS.bolt;
+    var s = size || 16;
+    return '<svg class="ic" viewBox="0 0 24 24" width="' + s + '" height="' + s + '" fill="none" stroke="currentColor" ' +
+      'stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + d + '</svg>';
+  };
+
   // ---------- 浏览器端 ----------
   ui.toast = function (msg, ms) {
     if (!hasDOM) return;
@@ -194,6 +228,69 @@
     pushLayer(close);
   };
 
+  // ---------- 顶栏：页面名 + 保存状态 + 手动保存 ----------
+  ui.topbar = {
+    ready: false,
+
+    init: function () {
+      var bar = document.getElementById('topbar');
+      if (!bar || this.ready) return;
+      this.ready = true;
+      bar.innerHTML =
+        '<div class="tb-left">' +
+        '<div class="tb-crumb"><span class="tb-app">我的工作台</span>' +
+        '<span class="tb-sep">/</span><span class="tb-title" id="tb-title">首页</span></div>' +
+        '</div>' +
+        '<div class="tb-right">' +
+        '<span class="save-chip" id="tb-save" data-state="saved"><i class="save-dot"></i>' +
+        '<span id="tb-save-text">已保存</span></span>' +
+        '<button class="btn btn-sm btn-primary" id="tb-save-btn" title="立即保存到本机（Ctrl/⌘ + S）">' +
+        ui.icon('save', 15) + '<span>保存</span></button>' +
+        '<button class="icon-btn" id="tb-theme" title="切换深浅色"></button>' +
+        '<button class="icon-btn" id="tb-quick" title="快速记录（Ctrl/⌘ + K）">' + ui.icon('bolt', 17) + '</button>' +
+        '</div>';
+
+      var self = this;
+      document.getElementById('tb-save-btn').addEventListener('click', function () {
+        if (App.saveNow) App.saveNow();
+      });
+      document.getElementById('tb-quick').addEventListener('click', function () { ui.quickCapture(); });
+      document.getElementById('tb-theme').addEventListener('click', function () {
+        var next = (App.store.settings.theme === 'dark') ? 'light' : 'dark';
+        App.store.setSetting('theme', next).then(function () {
+          document.documentElement.setAttribute('data-theme', next);
+          self.setTheme(next);
+        });
+      });
+      this.setTheme(App.store.settings.theme || 'light');
+      this.setSave(App.saveState || { status: 'saved' });
+    },
+
+    setTheme: function (theme) {
+      var btn = document.getElementById('tb-theme');
+      if (btn) btn.innerHTML = ui.icon(theme === 'dark' ? 'sun' : 'moon', 17);
+    },
+
+    setMeta: function (title) {
+      var el = document.getElementById('tb-title');
+      if (el) el.textContent = title || '';
+    },
+
+    setSave: function (state) {
+      var chip = document.getElementById('tb-save');
+      var text = document.getElementById('tb-save-text');
+      if (!chip || !text) return;
+      state = state || { status: 'saved' };
+      var label = '已保存';
+      if (state.status === 'saving') label = '保存中…';
+      else if (state.status === 'error') label = '保存失败';
+      else if (state.at) label = '已保存 ' + U.fmtClock(new Date(state.at));
+      else if (state.label) label = state.label;
+      chip.setAttribute('data-state', state.status || 'saved');
+      text.textContent = label;
+    }
+  };
+
   // ---------- 事件绑定 ----------
   ui.bind = function (root, handlers) {
     handlers = handlers || {};
@@ -279,6 +376,10 @@
       if (meta && (e.key === 'k' || e.key === 'K')) {
         e.preventDefault();
         ui.quickCapture();
+      }
+      if (meta && (e.key === 's' || e.key === 'S')) {
+        e.preventDefault();
+        if (App.saveNow) App.saveNow();
       }
       if (e.key === '/' && !/input|textarea|select/i.test((document.activeElement || {}).tagName || '')) {
         var search = document.querySelector('[data-search]');

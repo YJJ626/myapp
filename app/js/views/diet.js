@@ -5,6 +5,41 @@
   var views = App.views = App.views || {};
   var D = App.logic.diet;
 
+  function monthHtml(monthKey, cells, goal) {
+    var total = goal.kcal || 0;
+    var html = '<div class="cal cal-compact">';
+    html += '<div class="cal-head"><div class="row">' +
+      '<button class="icon-btn" data-act="diet-month" data-delta="-1" title="上个月">' + App.ui.icon('left', 16) + '</button>' +
+      '<span class="cal-title">' + U.escape(U.monthTitle(monthKey)) + '</span>' +
+      '<button class="icon-btn" data-act="diet-month" data-delta="1" title="下个月">' + App.ui.icon('right', 16) + '</button>' +
+      '<button class="btn btn-sm" data-act="diet-month" data-delta="0">回到本月</button>' +
+      '</div><div class="cal-legend">' +
+      '<span>进度条＝实际热量 / ' + (total || '—') + ' kcal</span>' +
+      '<span>四个点＝四餐记录</span>' +
+      '</div></div>';
+    html += '<div class="cal-week">' + U.weekdayShort.map(function (d) { return '<span>周' + d + '</span>'; }).join('') + '</div>';
+    html += '<div class="cal-grid">';
+    cells.forEach(function (c) {
+      var cls = 'cal-cell';
+      if (!c.inMonth) cls += ' dim';
+      if (c.isToday) cls += ' today';
+      html += '<div class="' + cls + '" data-act="diet-day" data-date="' + c.date + '">';
+      html += '<div class="row-between"><span class="cal-num">' + U.parseKey(c.date).getDate() + '</span>' +
+        (c.kcal ? '<span class="cal-kcal' + (c.over ? '" style="color:var(--danger)' : '') + '">' + c.kcal + '</span>' : '') +
+        '</div>';
+      if (c.kcal) {
+        html += '<div class="cal-mini-bar ' + (c.over ? 'over' : '') + '"><i style="width:' + c.pct + '%"></i></div>' +
+          '<div class="cal-dots">' + [0, 1, 2, 3].map(function (i) {
+            return '<i class="' + (i < c.meals ? 'on' : '') + '"></i>';
+          }).join('') + '</div>' +
+          '<div class="cal-meta">' + c.meals + ' 餐' + (c.water ? ' · ' + c.water + ' 杯水' : '') + '</div>';
+      }
+      html += '</div>';
+    });
+    html += '</div></div>';
+    return html;
+  }
+
   views.diet = {
     title: '饮食计划',
     render: function (snap, ctx) {
@@ -15,6 +50,10 @@
       (snap.foods || []).forEach(function (f) { fmap[f.id] = f; });
       var water = 0;
       (snap.dayMetas || []).forEach(function (m) { if (m.id === date) water = m.waterCups || 0; });
+
+      App.uiState = App.uiState || {};
+      var monthKey = App.uiState.dietMonth || U.monthKey(date);
+      var cells = D.monthData(monthKey, date, goal);
 
       var html = '<div class="page-head"><div class="grow"><h1>饮食计划</h1>' +
         '<div class="sub">' + U.escape(U.fmtDateCN(date)) + ' · 计划归计划，先记实际吃进去的</div></div>' +
@@ -38,6 +77,8 @@
           return '<i data-act="water" data-index="' + i + '" class="' + (i < water ? 'on' : '') + '"></i>';
         }).join('') + '</div></div>' +
         '</div></div>';
+
+      html += '<div style="margin-bottom:16px">' + monthHtml(monthKey, cells, goal) + '</div>';
 
       html += '<div class="grid-2">';
 
@@ -195,8 +236,40 @@
         });
       }
 
+      function openDay(date) {
+        var d = D.dayTotals(date);
+        var goalKcal = (App.store.settings.goals || {}).kcal || 0;
+        var html = '<div class="row wrap" style="gap:7px;margin-bottom:14px">' +
+          '<span class="tag tag-accent">' + d.actual.kcal + ' / ' + goalKcal + ' kcal</span>' +
+          '<span class="tag">蛋白 ' + d.actual.protein + ' g</span>' +
+          '<span class="tag">' + d.water + ' / 8 杯水</span>' +
+          '</div>';
+        if (!d.filled) {
+          html += '<div class="note">这天还没有记录吃的东西。</div>';
+        } else {
+          d.meals.forEach(function (m) {
+            if (!m.items.length) return;
+            html += '<div class="dd-meal"><div class="dd-meal-head"><span>' + m.name + '</span>' +
+              '<span>' + m.kcal + ' kcal</span></div>';
+            m.items.forEach(function (it) {
+              html += '<div class="food-line"><span>' + U.escape(it.name) + ' × ' + it.qty + '</span>' +
+                '<span class="faint">' + it.kcal + '</span></div>';
+            });
+            html += '</div>';
+          });
+        }
+        App.ui.openDrawer({ title: U.fmtDateCN(date) + ' 吃了什么', body: html });
+      }
+
       App.ui.bind(root, {
         acts: {
+          'diet-month': function (d) {
+            var delta = Number(d.delta) || 0;
+            var base = App.uiState.dietMonth || U.monthKey(ctx.today);
+            App.uiState.dietMonth = delta === 0 ? '' : U.shiftMonth(base, delta);
+            App.refresh();
+          },
+          'diet-day': function (d) { openDay(d.date); },
           'open-foods': openFoods,
           'add-food': function (d) { openPicker(d.type, d.kind); },
           'del-item': function (d) {

@@ -51,6 +51,14 @@
 
   consult.remove = function (id) { return S().remove('consults', id); };
 
+  // 删除一个人：连同他的全部咨询记录一起清掉，返回删除条数
+  consult.removePerson = function (name) {
+    var rows = S().list('consults').filter(function (c) { return c.person === name; });
+    return rows.reduce(function (chain, row) {
+      return chain.then(function () { return S().remove('consults', row.id); });
+    }, Promise.resolve()).then(function () { return rows.length; });
+  };
+
   consult.waiting = function () {
     return S().list('consults').filter(function (c) { return c.status === 'waiting'; });
   };
