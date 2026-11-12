@@ -1,0 +1,22 @@
+# ---- 依赖 ----
+node_modules/
+tests/node_modules/
+
+# ---- 运行时数据：个人数据与服务器镜像，不入库 ----
+data/*.json
+data/*.tmp
+data/*.bak
+
+# ---- 工具缓存 ----
+.workbuddy/
+
+# ---- 编辑器 / 系统 ----
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---- 日志与临时文件 ----
+*.log
+*.tmp
